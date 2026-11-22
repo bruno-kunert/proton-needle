@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTUP_TOOLCHAIN: 1.89.0
+
+jobs:
+  quality:
+    name: Source quality and Rust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y clang-format-18 dbus-daemon python3-venv shellcheck shfmt
+          rustup toolchain install 1.89.0 --profile minimal --component clippy --component rustfmt
+          python3 -m venv "$RUNNER_TEMP/lint"
+          "$RUNNER_TEMP/lint/bin/python" -m pip install --disable-pip-version-check 'ruff==0.17.6'
+      - name: Check source formatting and scripts
+        run: |
+          cargo fmt --all -- --check
+          find helper/src fixtures -type f \( -name '*.cpp' -o -name '*.hpp' \) -print0 | xargs -0 clang-format-18 --dry-run --Werror
+          "$RUNNER_TEMP/lint/bin/ruff" check --select E4,E7,E9,F tests
+          "$RUNNER_TEMP/lint/bin/ruff" format --check tests
+          shellcheck helper/build-helper.sh
+          shfmt -i 4 -d helper/build-helper.sh
+      - name: Check Git publication contents
+        run: |
+          git ls-files --error-unmatch Cargo.lock Cargo.toml helper/CMakeLists.txt tests/helper_backend.py
+          ignored=$(git ls-files -ci --exclude-standard)
+          if [ -n "$ignored" ]; then
+            printf 'Tracked files match ignore rules:\n%s\n' "$ignored"
+            exit 1
+          fi
+      - name: Compile and lint Rust
+        run: |
+          cargo check --locked --all-targets --all-features
+          cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Run isolated unit tests
+        run: cargo test --locked --all-targets --all-features
+      - name: Build release
+        run: cargo build --locked --release
+
+  wine-fixtures:
+    name: Windows helper and isolated Wine fixtures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install cross-compilation and fixture tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y cmake g++-mingw-w64-x86-64 nlohmann-json3-dev wine64 dbus-daemon cppcheck
+          rustup toolchain install 1.89.0 --profile minimal
+      - name: Build Windows helper and controlled fixtures
+        env:
+          CXXFLAGS: -Werror
+          CMAKE_EXPORT_COMPILE_COMMANDS: ON
+        run: helper/build-helper.sh --fixtures
+      - name: Analyze Windows C++
+        run: cppcheck --project=build/helper/compile_commands.json --platform=win64 --enable=warning,performance,portability --error-exitcode=1
+      - name: Run private Wine integration tests
+        run: |
+          mapfile -t loaders < <(dpkg-query -L wine64 libwine:amd64 | grep -E '/wine/(wine|wine64)$' | sort -u)
+          if [ "${#loaders[@]}" -ne 1 ] || [ ! -x "${loaders[0]}" ]; then
+            printf 'Could not identify one packaged native Wine loader\n' >&2
+            exit 1
+          fi
+          python3 tests/helper_integration.py --wine "${loaders[0]}" --fixtures build/helper
+          python3 tests/helper_backend.py --wine "${loaders[0]}" --fixtures build/helper
