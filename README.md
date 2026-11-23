@@ -69,6 +69,8 @@ python3 tests/helper_integration.py --wine /absolute/path/to/native/wine --fixtu
 python3 tests/helper_backend.py --wine /absolute/path/to/native/wine --fixtures build/helper
 ```
 
+Steam/Proton is verified manually with a dedicated test target and probe DLL. See [tests/steam-proton/README.md](tests/steam-proton/README.md). `tests/steam_fixtures.py` checks those fixtures (PE checks, optional native Wine self-test) but does not involve Steam or Proton.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

@@ -85,3 +85,4 @@ jobs:
           fi
           python3 tests/helper_integration.py --wine "${loaders[0]}" --fixtures build/helper
           python3 tests/helper_backend.py --wine "${loaders[0]}" --fixtures build/helper
+          python3 tests/steam_fixtures.py --wine "${loaders[0]}" --fixtures build/helper
