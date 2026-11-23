@@ -118,7 +118,7 @@ int self_test()
     FreeLibrary(probe);
     return matches ? 0 : 5;
 }
-}
+} // namespace
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show)
 {

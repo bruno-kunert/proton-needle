@@ -15,7 +15,7 @@ bool expected_host()
     name = name ? name + 1 : image;
     return _wcsicmp(name, L"proton_needle_steam_target.exe") == 0;
 }
-}
+} // namespace
 
 extern "C" __declspec(dllexport) DWORD proton_needle_steam_probe_pid()
 {
